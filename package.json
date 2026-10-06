@@ -14,7 +14,7 @@
     "test:cy": "start-server-and-test serve http://localhost:4173 cy:run",
     "test": "npm run test:pw && npm run test:cy",
     "test:unit": "node --test \"tests/unit/*.test.mjs\"",
-    "dev": "npx wrangler pages dev app"
+    "dev": "npx wrangler dev"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
