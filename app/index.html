@@ -129,6 +129,18 @@ footer{margin-top:28px;font-size:13px;color:var(--muted)}
 .mark,.greet .name{background:none}
 .example{border-left-color:var(--rule)}
 .entry:focus-within{box-shadow:0 0 0 3px color-mix(in srgb,var(--navy) 25%,transparent)}
+dialog.guide{border:1px solid var(--rule);border-radius:18px;background:var(--card);color:var(--ink);padding:0;width:min(440px,calc(100vw - 32px));box-shadow:var(--shadow)}
+dialog.guide::backdrop{background:rgba(10,14,30,.55)}
+.guide-in{padding:22px 22px 18px}
+.guide h2{font:700 24px/1.2 "Bricolage Grotesque",system-ui,sans-serif;margin:0 0 4px}
+.guide .sub{margin:0 0 14px;color:var(--muted);font-size:15px}
+.guide ol{margin:0;padding-left:22px;display:grid;gap:10px}
+.guide li{padding-left:4px}
+.guide .key{display:inline-block;border:1px solid var(--rule);border-radius:6px;padding:0 6px;font-weight:700;white-space:nowrap}
+.guide .note{margin:14px 0 0;padding:10px 12px;border-radius:10px;background:var(--paper);font-size:14px}
+.guide .copyrow{display:flex;gap:8px;margin-top:8px}
+.guide .copyrow input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--card);font-size:14px}
+.guide .actions{display:flex;justify-content:flex-end;margin-top:16px}
 </style>
 </head>
 <body>
@@ -178,6 +190,16 @@ footer{margin-top:28px;font-size:13px;color:var(--muted)}
     <input class="search" id="search" placeholder="Search your words" aria-label="Search your words">
     <div id="listBox"></div>
   </section>
+
+  <dialog class="guide" id="installGuide" aria-labelledby="guideTitle">
+    <div class="guide-in">
+      <h2 id="guideTitle">Install Kata</h2>
+      <p class="sub" id="guideSub"></p>
+      <ol id="guideSteps"></ol>
+      <div id="guideNote"></div>
+      <div class="actions"><button class="btn" id="guideClose">Got it</button></div>
+    </div>
+  </dialog>
 
   <footer id="storeNote">Opening your notebook…</footer>
 </div>
@@ -567,15 +589,97 @@ function renderAll() {
 
 /* ---------- installable app ---------- */
 let deferredInstall = null;
-addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferredInstall = e; $("installBtn").hidden = false; });
+const ua = navigator.userAgent || "";
+const device = (() => {
+  const ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const android = /Android/i.test(ua);
+  const inApp = /FBAN|FBAV|Instagram|LinkedInApp|Line\/|WhatsApp|GSA\/|; wv\)/i.test(ua);
+  const iosSafari = ios && /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua);
+  const firefox = /Firefox|FxiOS/i.test(ua);
+  const macSafari = !ios && /Macintosh/.test(ua) && /Safari/i.test(ua) && !/Chrome|Chromium|Edg/i.test(ua);
+  return { ios, android, inApp, iosSafari, firefox, macSafari };
+})();
+const isInstalled = () => {
+  try { return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true; } catch { return false; }
+};
+
+function guideContent() {
+  const k = t => `<span class="key">${t}</span>`;
+  const copy = `<p class="note">Open Kata in your phone's browser first: tap ${k("⋮")} or ${k("Share")} and choose <b>Open in browser</b>, or copy the link:</p>
+    <div class="copyrow"><input id="guideLink" readonly value="${esc(location.href.split("#")[0])}" aria-label="Kata link"><button class="btn ghost" id="guideCopy">Copy</button></div>`;
+  if (device.inApp) return {
+    sub: "You're inside another app's browser, which can't install apps.",
+    steps: [device.ios ? `Open this page in <b>Safari</b>.` : `Open this page in <b>Chrome</b>.`, "Then come back to this guide for the next steps."],
+    note: copy
+  };
+  if (device.ios) return {
+    sub: device.iosSafari ? "Add Kata to your home screen in three taps." : "For the smoothest install, open this page in Safari.",
+    steps: [
+      ...(device.iosSafari ? [] : [`Copy the link below and open it in <b>Safari</b>.`]),
+      `Tap the ${k("Share")} button (the square with an arrow pointing up).`,
+      `Scroll down and tap ${k("Add to Home Screen")}.`,
+      `Tap ${k("Add")}. Kata appears on your home screen.`
+    ],
+    note: device.iosSafari ? "" : copy
+  };
+  if (device.android) return {
+    sub: device.firefox ? "Install Kata from Firefox's menu." : "Install Kata from Chrome's menu.",
+    steps: [
+      `Tap ${k("⋮")} in the top-right corner.`,
+      `Tap ${k("Install app")} or ${k("Add to Home screen")}.`,
+      `Tap ${k("Install")}. Kata appears on your home screen.`
+    ],
+    note: ""
+  };
+  if (device.macSafari) return {
+    sub: "Add Kata to your Dock.",
+    steps: [`In the menu bar, click ${k("File")}.`, `Click ${k("Add to Dock")}.`, `Click ${k("Add")}. Kata opens in its own window.`],
+    note: ""
+  };
+  if (device.firefox) return {
+    sub: "Firefox on computers can't install apps.",
+    steps: [`Open this page in <b>Chrome</b> or <b>Edge</b>.`, `Click the install icon at the right end of the address bar.`, `Click ${k("Install")}.`],
+    note: copy
+  };
+  return {
+    sub: "Install Kata as an app on this computer.",
+    steps: [
+      `Click the install icon at the right end of the address bar (a screen with a down arrow), or open the browser menu ${k("⋮")}.`,
+      `Choose ${k("Install Kata")} (in Edge: ${k("Apps")} → ${k("Install this site as an app")}).`,
+      `Click ${k("Install")}. Kata opens in its own window.`
+    ],
+    note: ""
+  };
+}
+function openGuide() {
+  const g = guideContent();
+  $("guideSub").textContent = g.sub;
+  $("guideSteps").innerHTML = g.steps.map(x => `<li>${x}</li>`).join("");
+  $("guideNote").innerHTML = g.note;
+  const copyBtn = $("guideCopy");
+  if (copyBtn) copyBtn.onclick = async () => {
+    const input = $("guideLink");
+    try { await navigator.clipboard.writeText(input.value); copyBtn.textContent = "Copied"; }
+    catch { input.select(); copyBtn.textContent = "Press Ctrl+C"; }
+  };
+  const d = $("installGuide");
+  if (typeof d.showModal === "function") d.showModal(); else d.setAttribute("open", "");
+}
+$("guideClose").onclick = () => { const d = $("installGuide"); d.close ? d.close() : d.removeAttribute("open"); };
+$("installGuide").addEventListener("click", e => { if (e.target === $("installGuide")) $("guideClose").onclick(); });
+
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferredInstall = e; });
 addEventListener("appinstalled", () => { deferredInstall = null; $("installBtn").hidden = true; });
 $("installBtn").onclick = async () => {
-  if (!deferredInstall) return;
+  if (!deferredInstall) return openGuide();
   deferredInstall.prompt();
-  try { await deferredInstall.userChoice; } catch {}
-  deferredInstall = null; $("installBtn").hidden = true;
+  let outcome = "";
+  try { outcome = (await deferredInstall.userChoice).outcome; } catch {}
+  deferredInstall = null;
+  if (outcome === "accepted") $("installBtn").hidden = true;
 };
 const topLevel = (() => { try { return window.self === window.top; } catch { return false; } })();
+$("installBtn").hidden = !topLevel || isInstalled();
 if ("serviceWorker" in navigator && !window.__KATA_NO_SW && topLevel &&
     (location.protocol === "https:" || location.hostname === "localhost")) {
   addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

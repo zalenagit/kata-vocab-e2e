@@ -12,7 +12,7 @@
  */
 function installKataMocks(win, config) {
   const cfg = Object.assign(
-    { claude: true, name: "Zalina Yusop", sample: true, sampleError: null, speechRecognition: true, speech: [], seedWords: null },
+    { claude: true, userAgent: null, installed: false, name: "Zalina Yusop", sample: true, sampleError: null, speechRecognition: true, speech: [], seedWords: null },
     config || {}
   );
 
@@ -49,6 +49,14 @@ function installKataMocks(win, config) {
 
   // Keep the service worker out of tests so every run sees fresh files.
   win.__KATA_NO_SW = true;
+
+  // Pretend to be a specific device/browser, or an already-installed app.
+  if (cfg.userAgent) {
+    Object.defineProperty(win.navigator, "userAgent", { configurable: true, get: () => cfg.userAgent });
+  }
+  if (cfg.installed) {
+    Object.defineProperty(win.navigator, "standalone", { configurable: true, get: () => true });
+  }
 
   // ---- Claude runtime (claude: false = the standalone/Cloudflare version) ----
   win.__sampleCalls = [];

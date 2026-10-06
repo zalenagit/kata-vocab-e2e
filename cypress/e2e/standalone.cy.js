@@ -1,6 +1,14 @@
 // The standalone version (Cloudflare Pages): no Claude runtime, translation via /api/translate.
 const { installKataMocks } = require("../../tests/support/kata-mocks");
 
+const UA = {
+  iphoneSafari: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+  iphoneChrome: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/130.0 Mobile/15E148 Safari/604.1",
+  androidChrome: "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36",
+  androidWhatsApp: "Mozilla/5.0 (Linux; Android 14; Pixel 7; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/130.0 Mobile Safari/537.36 WhatsApp/2.24",
+  desktopFirefox: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0"
+};
+
 const visitStandalone = (cfg = {}) =>
   cy.visit("/", { onBeforeLoad: (win) => installKataMocks(win, { claude: false, ...cfg }) });
 
@@ -58,18 +66,69 @@ describe("Standalone app (Cloudflare)", () => {
     cy.contains("button", "Tell me your name").should("be.visible");
   });
 
-  it("install button stays hidden until the browser offers install", () => {
+  it("install button uses the browser's install prompt when offered", () => {
     visitStandalone();
-    cy.get("#installBtn").should("not.be.visible");
+    cy.get("#installBtn").should("be.visible");
     cy.window().then((win) => {
       const e = new win.Event("beforeinstallprompt", { cancelable: true });
       e.prompt = cy.stub().as("prompt");
       e.userChoice = Promise.resolve({ outcome: "accepted" });
       win.dispatchEvent(e);
     });
-    cy.get("#installBtn").should("be.visible").click();
+    cy.get("#installBtn").click();
     cy.get("@prompt").should("have.been.calledOnce");
     cy.get("#installBtn").should("not.be.visible");
+    cy.get("#installGuide").should("not.be.visible");
+  });
+
+  it("install button is hidden once Kata is installed", () => {
+    visitStandalone({ installed: true });
+    cy.get("#installBtn").should("not.be.visible");
+  });
+});
+
+describe("In-app install guide", () => {
+  const openGuide = (cfg) => {
+    visitStandalone(cfg);
+    cy.get("#installBtn").click();
+    cy.get("#installGuide").should("be.visible");
+  };
+
+  it("iPhone Safari: Share, Add to Home Screen, Add", () => {
+    openGuide({ userAgent: UA.iphoneSafari });
+    cy.get("#installGuide li").should("have.length", 3);
+    cy.get("#installGuide").should("contain.text", "Add to Home Screen");
+    cy.get("#guideLink").should("not.exist");
+  });
+
+  it("iPhone Chrome: suggests Safari and offers the link", () => {
+    openGuide({ userAgent: UA.iphoneChrome });
+    cy.get("#installGuide").should("contain.text", "open this page in Safari");
+    cy.get("#guideLink").invoke("val").should("match", /http:\/\/localhost:4173\//);
+  });
+
+  it("Android Chrome: menu, Install app", () => {
+    openGuide({ userAgent: UA.androidChrome });
+    cy.get("#installGuide").should("contain.text", "Install app");
+    cy.get("#installGuide li").should("have.length", 3);
+  });
+
+  it("in-app browsers are told to open a real browser", () => {
+    openGuide({ userAgent: UA.androidWhatsApp });
+    cy.get("#guideSub").should("have.text", "You're inside another app's browser, which can't install apps.");
+    cy.get("#installGuide").should("contain.text", "Open this page in Chrome");
+    cy.get("#guideCopy").should("be.visible");
+  });
+
+  it("desktop Firefox is pointed to Chrome or Edge", () => {
+    openGuide({ userAgent: UA.desktopFirefox });
+    cy.get("#guideSub").should("have.text", "Firefox on computers can't install apps.");
+  });
+
+  it("Got it closes the guide", () => {
+    openGuide({ userAgent: UA.androidChrome });
+    cy.get("#guideClose").click();
+    cy.get("#installGuide").should("not.be.visible");
   });
 });
 
