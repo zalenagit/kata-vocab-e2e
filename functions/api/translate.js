@@ -1,20 +1,20 @@
 /**
- * Cloudflare Pages Function: GET /api/translate?q=hello&from=en-US&to=ms-MY
+ * GET /api/translate?q=hello&from=en-US&to=ms-MY
  *
- * Proxies the free MyMemory translation API (https://mymemory.translated.net/doc/spec.php)
- * so the browser never talks to it directly. That lets us:
- *   - validate input and only allow the 16 languages Kata supports
- *   - cache answers at Cloudflare's edge for a day (saves the free quota)
- *   - add the optional MYMEMORY_EMAIL secret, which raises MyMemory's free daily limit,
- *     without exposing it in the page
+ * 1. Cloudflare Workers AI (Meta m2m100), when the AI binding is configured
+ * 2. MyMemory free API as a fallback
+ * Answers are cached at the edge for a day.
  */
 
 export const LANGS = {
   "en-US": "en", "ms-MY": "ms", "id-ID": "id", "es-ES": "es", "fr-FR": "fr", "de-DE": "de",
-  "it-IT": "it", "pt-BR": "pt-BR", "ja-JP": "ja", "ko-KR": "ko", "zh-CN": "zh-CN", "ar-SA": "ar",
+  "it-IT": "it", "pt-BR": "pt", "ja-JP": "ja", "ko-KR": "ko", "zh-CN": "zh", "ar-SA": "ar",
   "hi-IN": "hi", "ta-IN": "ta", "th-TH": "th", "vi-VN": "vi"
 };
+// MyMemory wants region codes for these two
+const MYMEMORY_CODES = { pt: "pt-BR", zh: "zh-CN" };
 export const MAX_CHARS = 200;
+export const AI_MODEL = "@cf/meta/m2m100-1.2b";
 
 const json = (body, status = 200, headers = {}) =>
   new Response(JSON.stringify(body), {
@@ -29,6 +29,45 @@ export const decode = (s) =>
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
     .trim();
 
+async function viaWorkersAI(ai, q, from, to) {
+  const out = await ai.run(AI_MODEL, { text: q, source_lang: from, target_lang: to });
+  const t = decode(out && out.translated_text);
+  return t ? { translation: t, alternatives: [], source: "Cloudflare Workers AI" } : null;
+}
+
+async function viaMyMemory(q, from, to, env) {
+  const upstream = new URL("https://api.mymemory.translated.net/get");
+  upstream.searchParams.set("q", q);
+  upstream.searchParams.set("langpair", `${MYMEMORY_CODES[from] || from}|${MYMEMORY_CODES[to] || to}`);
+  if (env && env.MYMEMORY_EMAIL) upstream.searchParams.set("de", env.MYMEMORY_EMAIL);
+
+  let res, data;
+  try {
+    res = await fetch(upstream.toString(), {
+      headers: { Accept: "application/json", "User-Agent": "Kata-vocab/1.0 (+https://github.com/zalenagit/kata-vocab-e2e)" }
+    });
+  } catch {
+    return { error: json({ error: "Translation service unreachable." }, 502) };
+  }
+  if (!res.ok) return { error: json({ error: "Translation service unavailable.", upstreamStatus: res.status }, 502) };
+  try { data = await res.json(); } catch { return { error: json({ error: "Translation service sent a bad reply." }, 502) }; }
+
+  const status = Number(data && data.responseStatus);
+  const raw = data && data.responseData && data.responseData.translatedText;
+  if (status === 429 || /MYMEMORY WARNING/i.test(raw || "")) return { error: json({ error: "Daily translation limit reached." }, 429) };
+  if (status !== 200 || !raw) return { error: json({ error: "No translation found." }, 502) };
+
+  const translation = decode(raw);
+  const seen = new Set([translation.toLowerCase(), q.toLowerCase()]);
+  const alternatives = [];
+  for (const m of Array.isArray(data.matches) ? data.matches : []) {
+    const t = decode(m && m.translation);
+    if (t && t.length <= 60 && !seen.has(t.toLowerCase())) { seen.add(t.toLowerCase()); alternatives.push(t); }
+    if (alternatives.length === 3) break;
+  }
+  return { result: { translation, alternatives, source: "MyMemory" } };
+}
+
 export async function onRequestGet(context) {
   const { request, env } = context;
   const url = new URL(request.url);
@@ -39,43 +78,24 @@ export async function onRequestGet(context) {
   if (!q || q.length > MAX_CHARS) return json({ error: `Send a word or phrase up to ${MAX_CHARS} characters.` }, 400);
   if (!from || !to || from === to) return json({ error: "Unsupported language pair." }, 400);
 
-  // Edge cache, keyed on the normalised request.
   const cache = typeof caches !== "undefined" && caches.default ? caches.default : null;
-  const cacheKey = new Request(`https://kata.cache/translate?q=${encodeURIComponent(q.toLowerCase())}&from=${from}&to=${to}`);
+  const cacheKey = new Request(`https://kata.cache/translate/v2?q=${encodeURIComponent(q.toLowerCase())}&from=${from}&to=${to}`);
   if (cache) {
     const hit = await cache.match(cacheKey);
     if (hit) return hit;
   }
 
-  const upstream = new URL("https://api.mymemory.translated.net/get");
-  upstream.searchParams.set("q", q);
-  upstream.searchParams.set("langpair", `${from}|${to}`);
-  if (env && env.MYMEMORY_EMAIL) upstream.searchParams.set("de", env.MYMEMORY_EMAIL);
-
-  let data;
-  try {
-    const res = await fetch(upstream.toString(), { headers: { Accept: "application/json" } });
-    if (!res.ok) return json({ error: "Translation service unavailable." }, 502);
-    data = await res.json();
-  } catch {
-    return json({ error: "Translation service unreachable." }, 502);
+  let result = null;
+  if (env && env.AI) {
+    try { result = await viaWorkersAI(env.AI, q, from, to); } catch { result = null; }
+  }
+  if (!result) {
+    const mm = await viaMyMemory(q, from, to, env);
+    if (mm.error) return mm.error;
+    result = mm.result;
   }
 
-  const status = Number(data && data.responseStatus);
-  const raw = data && data.responseData && data.responseData.translatedText;
-  if (status === 429 || /MYMEMORY WARNING/i.test(raw || "")) return json({ error: "Daily translation limit reached." }, 429);
-  if (status !== 200 || !raw) return json({ error: "No translation found." }, 502);
-
-  const translation = decode(raw);
-  const seen = new Set([translation.toLowerCase()]);
-  const alternatives = [];
-  for (const m of Array.isArray(data.matches) ? data.matches : []) {
-    const t = decode(m && m.translation);
-    if (t && t.length <= 60 && !seen.has(t.toLowerCase())) { seen.add(t.toLowerCase()); alternatives.push(t); }
-    if (alternatives.length === 3) break;
-  }
-
-  const response = json({ translation, alternatives, source: "MyMemory" }, 200, { "Cache-Control": "public, max-age=86400" });
+  const response = json(result, 200, { "Cache-Control": "public, max-age=86400" });
   if (cache) {
     const put = cache.put(cacheKey, response.clone());
     if (context.waitUntil) context.waitUntil(put); else await put;
