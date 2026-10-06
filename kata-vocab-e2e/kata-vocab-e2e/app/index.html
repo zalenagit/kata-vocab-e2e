@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kata – my word notebook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F2F4F8; --card:#FFFFFF; --ink:#18203A; --muted:#5B6584; --rule:#D3DAE8;
+  --navy:#1D2A5C; --navy-ink:#FFFFFF; --mark:#F5D547; --mark-ink:#18203A; --bad:#B4333A; --good:#2F7A4F;
+  --shadow:0 1px 0 #D3DAE8, 0 10px 30px -18px rgba(29,42,92,.45);
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#11162A; --card:#1A2140; --ink:#E9EDF7; --muted:#9EA8C7; --rule:#2C3560;
+    --navy:#AFC0FF; --navy-ink:#11162A; --mark:#E8C53A; --mark-ink:#11162A; --bad:#FF8A8F; --good:#7FD3A2;
+    --shadow:0 1px 0 #2C3560, 0 10px 30px -18px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#11162A; --card:#1A2140; --ink:#E9EDF7; --muted:#9EA8C7; --rule:#2C3560;
+  --navy:#AFC0FF; --navy-ink:#11162A; --mark:#E8C53A; --mark-ink:#11162A; --bad:#FF8A8F; --good:#7FD3A2;
+  --shadow:0 1px 0 #2C3560, 0 10px 30px -18px rgba(0,0,0,.8);
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+[hidden]{display:none!important}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.55 "Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--mark);outline-offset:2px}
+.wrap{max-width:640px;margin:0 auto;padding:28px 18px 60px}
+header h1{font:800 clamp(44px,11vw,72px)/.9 "Bricolage Grotesque",system-ui,sans-serif;letter-spacing:-.03em;margin:0;color:var(--navy)}
+.greet{margin:12px 0 22px;font:700 clamp(22px,5.5vw,28px)/1.25 "Bricolage Grotesque",system-ui,sans-serif;max-width:24ch}
+.greet .name{background:linear-gradient(transparent 58%,var(--mark) 58%,var(--mark) 92%,transparent 92%);border:0;padding:0 .08em;font:inherit;color:inherit;cursor:pointer}
+.greet .name:hover{text-decoration:underline dotted;text-underline-offset:4px}
+.greet .set{font:400 14px "Atkinson Hyperlegible",system-ui,sans-serif;color:var(--muted);background:none;border:0;padding:0;text-decoration:underline;cursor:pointer;display:block;margin-top:4px}
+.mark{background:linear-gradient(transparent 58%,var(--mark) 58%,var(--mark) 92%,transparent 92%);padding:0 .08em}
+
+nav{display:flex;gap:4px;background:var(--card);border:1px solid var(--rule);border-radius:999px;padding:4px;margin-bottom:22px;position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+nav button{flex:1;border:0;background:none;padding:9px 6px;border-radius:999px;cursor:pointer;font-weight:700;color:var(--muted)}
+nav button[aria-selected="true"]{background:var(--navy);color:var(--navy-ink)}
+nav .count{font-weight:400;opacity:.8}
+
+.panel[hidden]{display:none}
+.langs{display:flex;align-items:end;gap:8px;margin-bottom:12px}
+.langs label{flex:1;font-size:14px;color:var(--muted)}
+select{display:block;width:100%;margin-top:4px;padding:10px 12px;border:1px solid var(--rule);border-radius:10px;background:var(--card)}
+.icon-btn{border:1px solid var(--rule);background:var(--card);border-radius:10px;width:44px;height:44px;display:grid;place-items:center;cursor:pointer;flex:none}
+.icon-btn svg{width:20px;height:20px}
+.icon-btn.live{background:var(--bad);color:#fff;border-color:var(--bad);animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--bad) 25%,transparent)}}
+@media (prefers-reduced-motion:reduce){.icon-btn.live{animation:none}.flip-inner{transition:none!important}}
+
+.entry{display:flex;gap:8px;background:var(--card);border:2px solid var(--navy);border-radius:14px;padding:6px 6px 6px 16px;align-items:center}
+.entry input{flex:1;border:0;background:none;font:700 24px/1.2 "Bricolage Grotesque",system-ui,sans-serif;min-width:0;padding:8px 0}
+.entry input:focus{outline:none}
+.entry:focus-within{box-shadow:0 0 0 3px var(--mark)}
+.btn{border:0;border-radius:10px;padding:11px 18px;font-weight:700;cursor:pointer;background:var(--navy);color:var(--navy-ink)}
+.btn.ghost{background:none;border:1px solid var(--rule);color:var(--ink)}
+.btn.yellow{background:var(--mark);color:var(--mark-ink)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.hint{font-size:14px;color:var(--muted);margin:8px 2px 0;min-height:1.4em}
+.hint.err{color:var(--bad)}
+
+.result{margin-top:22px;background:var(--card);border-radius:16px;box-shadow:var(--shadow);padding:22px;border:1px solid var(--rule)}
+.pair{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center}
+.small{font-size:13px;color:var(--muted)}
+.word{font:700 30px/1.15 "Bricolage Grotesque",system-ui,sans-serif;margin:0;overflow-wrap:anywhere}
+.trans{font:800 38px/1.1 "Bricolage Grotesque",system-ui,sans-serif;margin:0;color:var(--navy);overflow-wrap:anywhere}
+.romaji{color:var(--muted);font-style:italic}
+.divider{border:0;border-top:1px dashed var(--rule);margin:16px 0}
+.meaning{margin:0 0 10px}
+.example{margin:0;padding-left:12px;border-left:3px solid var(--mark)}
+.example span{display:block;color:var(--muted)}
+.result .actions{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}
+.manual input{width:100%;padding:10px 12px;border:1px solid var(--rule);border-radius:10px;background:var(--card);margin-top:4px}
+
+/* Flashcards */
+.deck-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.toggle{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--muted);cursor:pointer}
+.flip{perspective:1200px;cursor:pointer}
+.flip-inner{position:relative;min-height:300px;transition:transform .5s cubic-bezier(.3,.7,.2,1);transform-style:preserve-3d}
+.flip.flipped .flip-inner{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;background:var(--card);border:1px solid var(--rule);border-radius:18px;box-shadow:var(--shadow);padding:22px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:10px;
+  background-image:repeating-linear-gradient(var(--card) 0 31px,var(--rule) 31px 32px);background-position:0 54px}
+.face.back{transform:rotateY(180deg)}
+.face .word,.face .trans{font-size:clamp(32px,8vw,46px);background:var(--card);padding:0 8px}
+.face .tag{position:absolute;top:14px;left:18px;font-size:13px;color:var(--muted);background:var(--card)}
+.face .tap{position:absolute;bottom:14px;font-size:13px;color:var(--muted);background:var(--card)}
+.face .example{text-align:left;background:var(--card);font-size:15px}
+.face .row{display:flex;gap:8px;background:var(--card)}
+.grade{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.grade .again{background:none;border:2px solid var(--bad);color:var(--bad)}
+.grade .got{background:var(--good);color:var(--card)}
+.say-result{font-size:14px;min-height:1.4em;background:var(--card)}
+.empty{text-align:center;padding:40px 16px;background:var(--card);border:1px dashed var(--rule);border-radius:16px}
+.empty h2{font:700 24px "Bricolage Grotesque",system-ui,sans-serif;margin:0 0 6px}
+.empty p{color:var(--muted);margin:0 0 16px}
+
+/* Word list */
+.search{width:100%;padding:11px 14px;border:1px solid var(--rule);border-radius:10px;background:var(--card);margin-bottom:12px}
+ul.words{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--rule);border-radius:16px;overflow:hidden}
+ul.words li{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:14px 16px;border-top:1px solid var(--rule);align-items:center}
+ul.words li:first-child{border-top:0}
+.w-main{font-weight:700;overflow-wrap:anywhere}
+.w-main b{color:var(--navy)}
+.w-meta{font-size:13px;color:var(--muted);display:flex;gap:10px;align-items:center}
+.dots{display:inline-flex;gap:3px}
+.dots i{width:7px;height:7px;border-radius:50%;background:var(--rule);display:block}
+.dots i.on{background:var(--good)}
+.w-actions{display:flex;gap:6px;grid-row:span 2}
+.w-actions .icon-btn{width:38px;height:38px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+footer{margin-top:28px;font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Kata</h1>
+    <p class="greet" id="greet" aria-live="polite">Hai! What words do you want to translate today?</p>
+  </header>
+
+  <nav role="tablist" aria-label="Sections">
+    <button role="tab" id="tab-add" aria-selected="true" aria-controls="p-add">Add a word</button>
+    <button role="tab" id="tab-practice" aria-selected="false" aria-controls="p-practice">Practice <span class="count" id="dueCount"></span></button>
+    <button role="tab" id="tab-list" aria-selected="false" aria-controls="p-list">My words <span class="count" id="wordCount"></span></button>
+  </nav>
+
+  <!-- ADD -->
+  <section class="panel" id="p-add" role="tabpanel" aria-labelledby="tab-add">
+    <div class="langs">
+      <label>From<select id="fromLang"></select></label>
+      <button class="icon-btn" id="swap" title="Swap languages" aria-label="Swap languages">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/></svg>
+      </button>
+      <label>To<select id="toLang"></select></label>
+    </div>
+    <div class="entry">
+      <label for="wordInput" class="sr">Word or phrase</label>
+      <input id="wordInput" placeholder="Type a word…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button class="icon-btn" id="micBtn" title="Say the word" aria-label="Say the word">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+      <button class="btn" id="translateBtn">Translate</button>
+    </div>
+    <p class="hint" id="addHint"></p>
+    <div id="resultBox"></div>
+  </section>
+
+  <!-- PRACTICE -->
+  <section class="panel" id="p-practice" role="tabpanel" aria-labelledby="tab-practice" hidden>
+    <div id="practiceBox"></div>
+  </section>
+
+  <!-- LIST -->
+  <section class="panel" id="p-list" role="tabpanel" aria-labelledby="tab-list" hidden>
+    <input class="search" id="search" placeholder="Search your words" aria-label="Search your words">
+    <div id="listBox"></div>
+  </section>
+
+  <footer id="storeNote">Opening your notebook…</footer>
+</div>
+
+<script>
+(() => {
+"use strict";
+const LANGS = [
+  ["en-US","English"],["ms-MY","Malay"],["id-ID","Indonesian"],["es-ES","Spanish"],["fr-FR","French"],
+  ["de-DE","German"],["it-IT","Italian"],["pt-BR","Portuguese"],["ja-JP","Japanese"],["ko-KR","Korean"],
+  ["zh-CN","Chinese (Mandarin)"],["ar-SA","Arabic"],["hi-IN","Hindi"],["ta-IN","Tamil"],["th-TH","Thai"],["vi-VN","Vietnamese"]
+];
+const langName = c => (LANGS.find(l => l[0] === c) || [c, c])[1];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ICON_SPEAK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg>';
+const ICON_MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+const ICON_DEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>';
+const DAY = 864e5, INTERVALS = [0, DAY, 2*DAY, 4*DAY, 8*DAY, 16*DAY];
+
+/* ---------- prefs (per-viewer convenience) ---------- */
+const prefs = (() => { try { return JSON.parse(localStorage.getItem("kata-prefs")) || {}; } catch { return {}; } })();
+const savePrefs = () => { try { localStorage.setItem("kata-prefs", JSON.stringify(prefs)); } catch {} };
+
+for (const id of ["fromLang","toLang"]) {
+  $(id).innerHTML = LANGS.map(([c,n]) => `<option value="${c}">${n}</option>`).join("");
+}
+$("fromLang").value = prefs.from || "en-US";
+$("toLang").value = prefs.to || "ms-MY";
+$("fromLang").onchange = $("toLang").onchange = () => { prefs.from = $("fromLang").value; prefs.to = $("toLang").value; savePrefs(); };
+$("swap").onclick = () => { const f = $("fromLang").value; $("fromLang").value = $("toLang").value; $("toLang").value = f; $("fromLang").onchange(); };
+
+/* ---------- greeting ---------- */
+let viewerName = "";
+function renderGreet() {
+  const g = $("greet");
+  const name = (prefs.name || viewerName || "").trim();
+  if (name) {
+    g.innerHTML = `Hai, <button class="name" id="nameBtn" title="Change your name">${esc(name)}</button>! What words do you want to translate today?`;
+    $("nameBtn").onclick = askName;
+  } else {
+    g.innerHTML = `Hai! What words do you want to translate today? <button class="set" id="nameBtn">Tell me your name</button>`;
+    $("nameBtn").onclick = askName;
+  }
+}
+function askName() {
+  const n = prompt("What should Kata call you?", prefs.name || viewerName || "");
+  if (n === null) return;
+  prefs.name = n.trim().slice(0, 40); savePrefs(); renderGreet();
+}
+renderGreet();
+(async () => {
+  if (!window.claude || !window.claude.use) return;
+  try {
+    const user = await claude.use("user");
+    if (!user) return;
+    const me = await user.me();
+    viewerName = ((me && me.name) || "").trim().split(/\s+/)[0] || "";
+    renderGreet();
+  } catch {}
+})();
+
+/* ---------- storage: private db rows, else this browser ---------- */
+let words = [], mode = "loading", col = null;
+const LS_KEY = "kata-words";
+function useLocal(note) {
+  mode = "local";
+  try { words = JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch { words = []; }
+  $("storeNote").textContent = note || "Words are saved in this browser only.";
+  renderAll();
+}
+const persistLocal = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(words)); } catch {} };
+async function initStore() {
+  if (!window.claude || !window.claude.use) return useLocal();
+  try {
+    const [db, user] = await Promise.all([claude.use("db"), claude.use("user")]);
+    const uid = db && user ? await user.id() : null;
+    if (!uid) return useLocal();
+    col = db.collection("data/users/" + uid);
+    mode = "db";
+    $("storeNote").textContent = "Your words are saved privately to your Claude account, so they follow you across devices.";
+    col.onSnapshot(snap => {
+      words = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+      renderAll();
+    }, () => useLocal("Couldn't reach your saved words, so this session saves in this browser only."));
+  } catch { useLocal(); }
+}
+async function putWord(w) {
+  if (mode === "db") { await col.doc(w.id).set(stripId(w)); }
+  else { const i = words.findIndex(x => x.id === w.id); i >= 0 ? words[i] = w : words.push(w); persistLocal(); renderAll(); }
+}
+async function removeWord(id) {
+  if (mode === "db") { await col.doc(id).delete(); }
+  else { words = words.filter(w => w.id !== id); persistLocal(); renderAll(); }
+}
+const stripId = ({ id, ...rest }) => rest;
+const newId = () => "w" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+/* ---------- voice out ---------- */
+let voices = [];
+const loadVoices = () => { voices = window.speechSynthesis ? speechSynthesis.getVoices() : []; };
+if (window.speechSynthesis) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+function speak(text, lang) {
+  if (!window.speechSynthesis || !text) return flash("Your browser can't read words aloud.");
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang; u.rate = .9;
+  const base = lang.split("-")[0];
+  u.voice = voices.find(v => v.lang === lang) || voices.find(v => v.lang.replace("_","-").startsWith(base)) || null;
+  speechSynthesis.speak(u);
+}
+
+/* ---------- voice in ---------- */
+const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+let activeRec = null;
+function listen(lang, btn, onText, onErr) {
+  if (!Rec) return onErr("Voice input isn't supported in this browser. Chrome or Edge work best — or just type.");
+  if (activeRec) { activeRec.stop(); return; }
+  const r = new Rec();
+  r.lang = lang; r.interimResults = false; r.maxAlternatives = 3;
+  activeRec = r; btn.classList.add("live");
+  r.onresult = e => onText([...e.results[0]].map(a => a.transcript.trim()));
+  r.onerror = e => onErr(e.error === "not-allowed" || e.error === "service-not-allowed"
+    ? "Microphone access is blocked here. Allow the mic in your browser, or type instead."
+    : e.error === "no-speech" ? "Didn't hear anything. Tap the mic and try again." : "Voice input stopped. Try again or type.");
+  r.onend = () => { btn.classList.remove("live"); activeRec = null; };
+  try { r.start(); } catch { btn.classList.remove("live"); activeRec = null; onErr("Couldn't start the microphone."); }
+}
+
+/* ---------- Claude translation ---------- */
+let samplePromise = window.claude && window.claude.use ? claude.use("sample") : Promise.resolve(null);
+let current = null;
+function flash(msg, err) { const h = $("addHint"); h.textContent = msg; h.classList.toggle("err", !!err); }
+
+$("micBtn").onclick = () => listen($("fromLang").value, $("micBtn"),
+  alts => { $("wordInput").value = alts[0]; flash(""); translate(); },
+  msg => flash(msg, true));
+$("wordInput").addEventListener("keydown", e => { if (e.key === "Enter") translate(); });
+$("translateBtn").onclick = translate;
+
+async function translate() {
+  const text = $("wordInput").value.trim();
+  if (!text) return flash("Type or say a word first.", true);
+  const from = $("fromLang").value, to = $("toLang").value;
+  if (from === to) return flash("Pick two different languages.", true);
+  const sample = await samplePromise;
+  if (!sample) { current = { text, from, to }; return renderManual(); }
+  $("translateBtn").disabled = true; flash("Translating…");
+  const prompt = `You are a bilingual dictionary for a language learner.
+Translate the ${langName(from)} word or phrase below into ${langName(to)}.
+Word: """${text.slice(0, 200)}"""
+Reply with ONLY a JSON object, no markdown, with these keys:
+"translation": the most common ${langName(to)} equivalent (string),
+"romanization": Latin-letter pronunciation of the translation if ${langName(to)} uses a non-Latin script, else "" ,
+"partOfSpeech": e.g. "noun", "verb", "phrase",
+"meaning": a one-sentence plain-English explanation of the meaning,
+"example": a short natural example sentence in ${langName(from)} using the word,
+"exampleTranslation": that example sentence in ${langName(to)},
+"alternatives": up to 3 other ${langName(to)} words with a similar meaning (array of strings).`;
+  try {
+    const r = await sample.json(prompt, { modelTier: "quick" });
+    current = { text, from, to, ...r, alternatives: Array.isArray(r.alternatives) ? r.alternatives.slice(0, 3) : [] };
+    flash(""); renderResult();
+  } catch (e) {
+    if (e && e.code === "not_granted") { samplePromise = Promise.resolve(null); current = { text, from, to }; flash("Translation needs permission to use Claude. You can still add the meaning yourself."); renderManual(); }
+    else if (e && e.code === "rate_limited") flash("Too many lookups at once. Wait a moment, then try again.", true);
+    else flash("Translation didn't come through. Try again.", true);
+  } finally { $("translateBtn").disabled = false; }
+}
+
+function renderResult() {
+  const c = current;
+  $("resultBox").innerHTML = `<article class="result">
+    <div class="pair">
+      <span class="small">${esc(langName(c.from))}${c.partOfSpeech ? " · " + esc(c.partOfSpeech) : ""}</span><span></span>
+      <p class="word"><span class="mark">${esc(c.text)}</span></p>
+      <button class="icon-btn" data-say="from" aria-label="Hear ${esc(c.text)}">${ICON_SPEAK}</button>
+    </div>
+    <hr class="divider">
+    <div class="pair">
+      <span class="small">${esc(langName(c.to))}</span><span></span>
+      <p class="trans">${esc(c.translation)}</p>
+      <button class="icon-btn" data-say="to" aria-label="Hear the translation">${ICON_SPEAK}</button>
+      ${c.romanization ? `<span class="romaji">${esc(c.romanization)}</span><span></span>` : ""}
+    </div>
+    ${c.alternatives && c.alternatives.length ? `<p class="small">Also: ${c.alternatives.map(esc).join(", ")}</p>` : ""}
+    <hr class="divider">
+    ${c.meaning ? `<p class="meaning">${esc(c.meaning)}</p>` : ""}
+    ${c.example ? `<p class="example">${esc(c.example)}<span>${esc(c.exampleTranslation)}</span></p>` : ""}
+    <div class="actions">
+      <button class="btn yellow" id="saveBtn">Save word</button>
+      <button class="btn ghost" id="clearBtn">Clear</button>
+    </div></article>`;
+  wireResult();
+}
+function renderManual() {
+  const c = current;
+  $("resultBox").innerHTML = `<article class="result manual">
+    <p class="word"><span class="mark">${esc(c.text)}</span></p>
+    <label class="small">${esc(langName(c.to))} translation<input id="manTrans" autocomplete="off"></label>
+    <div class="actions"><button class="btn yellow" id="saveBtn">Save word</button><button class="btn ghost" id="clearBtn">Clear</button></div>
+  </article>`;
+  $("manTrans").focus();
+  wireResult();
+}
+function wireResult() {
+  $("resultBox").querySelectorAll("[data-say]").forEach(b => b.onclick = () =>
+    b.dataset.say === "from" ? speak(current.text, current.from) : speak(current.translation, current.to));
+  $("clearBtn").onclick = () => { $("resultBox").innerHTML = ""; $("wordInput").value = ""; current = null; $("wordInput").focus(); };
+  $("saveBtn").onclick = async () => {
+    if ($("manTrans")) { const t = $("manTrans").value.trim(); if (!t) return flash("Add a translation before saving.", true); current.translation = t; }
+    const dup = words.find(w => w.text.toLowerCase() === current.text.toLowerCase() && w.to === current.to);
+    const w = { id: dup ? dup.id : newId(), text: current.text, from: current.from, to: current.to,
+      translation: current.translation || "", romanization: current.romanization || "", partOfSpeech: current.partOfSpeech || "",
+      meaning: current.meaning || "", example: current.example || "", exampleTranslation: current.exampleTranslation || "",
+      box: dup ? dup.box : 0, due: dup ? dup.due : Date.now(), added: dup ? dup.added : Date.now() };
+    try { await putWord(w); flash(dup ? `Updated “${w.text}”.` : `Saved “${w.text}”. It's ready to practice.`);
+      $("resultBox").innerHTML = ""; $("wordInput").value = ""; current = null; $("wordInput").focus();
+    } catch { flash("Couldn't save that word. Try again.", true); }
+  };
+}
+
+/* ---------- practice ---------- */
+let queue = [], qi = 0, flipped = false, reviewAll = false;
+const dueWords = () => words.filter(w => (w.due || 0) <= Date.now());
+function startSession(all) {
+  reviewAll = all;
+  queue = (all ? words.slice() : dueWords()).map(w => w.id).sort(() => Math.random() - .5);
+  qi = 0; flipped = false; renderPractice();
+}
+function renderPractice() {
+  const box = $("practiceBox");
+  if (!words.length) { box.innerHTML = `<div class="empty"><h2>No words yet</h2><p>Add a few words and they'll show up here as flashcards.</p><button class="btn" data-go="add">Add a word</button></div>`; return wireEmpty(); }
+  const w = qi < queue.length ? words.find(x => x.id === queue[qi]) : null;
+  if (!w) {
+    const n = dueWords().length;
+    box.innerHTML = `<div class="empty"><h2>${queue.length ? "Round finished" : "You're all caught up"}</h2>
+      <p>${n ? `${n} word${n > 1 ? "s are" : " is"} due now.` : "Nothing is due right now. Words come back on a schedule as you learn them."}</p>
+      <button class="btn" data-start="due" ${n ? "" : "hidden"}>Practice due words</button>
+      <button class="btn ghost" data-start="all">Review all ${words.length} words</button></div>`;
+    box.querySelectorAll("[data-start]").forEach(b => b.onclick = () => startSession(b.dataset.start === "all"));
+    return;
+  }
+  const rev = !!prefs.reverse;
+  const frontText = rev ? w.translation : w.text, frontLang = rev ? w.to : w.from;
+  const backText = rev ? w.text : w.translation, backLang = rev ? w.from : w.to;
+  box.innerHTML = `
+    <div class="deck-bar"><span class="small">Card ${qi + 1} of ${queue.length}${reviewAll ? " (full review)" : ""}</span>
+      <label class="toggle"><input type="checkbox" id="revToggle" ${rev ? "checked" : ""}> Show ${esc(langName(w.to))} first</label></div>
+    <div class="flip ${flipped ? "flipped" : ""}" id="card" tabindex="0" role="button" aria-label="Flashcard. Press to flip.">
+      <div class="flip-inner">
+        <div class="face front">
+          <span class="tag">${esc(langName(frontLang))}</span>
+          <p class="${rev ? "trans" : "word"}">${esc(frontText)}</p>
+          ${rev && w.romanization ? `<span class="romaji" style="background:var(--card)">${esc(w.romanization)}</span>` : ""}
+          <div class="row"><button class="icon-btn" data-say="front" aria-label="Hear it">${ICON_SPEAK}</button></div>
+          <span class="tap">Tap card or press Space to flip</span>
+        </div>
+        <div class="face back">
+          <span class="tag">${esc(langName(backLang))}</span>
+          <p class="${rev ? "word" : "trans"}">${esc(backText)}</p>
+          ${!rev && w.romanization ? `<span class="romaji" style="background:var(--card)">${esc(w.romanization)}</span>` : ""}
+          <div class="row">
+            <button class="icon-btn" data-say="back" aria-label="Hear it">${ICON_SPEAK}</button>
+            <button class="icon-btn" id="sayIt" title="Say it and check" aria-label="Say it out loud to check pronunciation">${ICON_MIC}</button>
+          </div>
+          <span class="say-result" id="sayResult"></span>
+          ${w.example ? `<p class="example">${esc(w.example)}<span>${esc(w.exampleTranslation)}</span></p>` : ""}
+        </div>
+      </div>
+    </div>
+    <div class="grade" ${flipped ? "" : "hidden"} id="grade">
+      <button class="btn again" id="againBtn">Again</button>
+      <button class="btn got" id="gotBtn">Got it</button>
+    </div>`;
+  const card = $("card");
+  const flip = () => { flipped = !flipped; card.classList.toggle("flipped", flipped); $("grade").hidden = !flipped; };
+  card.onclick = e => { if (!e.target.closest("button")) flip(); };
+  card.onkeydown = e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); flip(); } };
+  box.querySelector('[data-say="front"]').onclick = () => speak(frontText, frontLang);
+  box.querySelector('[data-say="back"]').onclick = () => speak(backText, backLang);
+  $("sayIt").onclick = () => {
+    const out = $("sayResult"); out.textContent = "Listening…"; out.style.color = "var(--muted)";
+    listen(w.to, $("sayIt"), alts => {
+      const norm = s => s.toLowerCase().normalize("NFKC").replace(/[\p{P}\s]/gu, "");
+      const target = norm(w.translation);
+      const hit = alts.some(a => norm(a) === target || (target.length > 3 && norm(a).includes(target)));
+      out.textContent = hit ? `Nice — that sounded like “${w.translation}”.` : `Heard “${alts[0]}”. Listen and try again.`;
+      out.style.color = hit ? "var(--good)" : "var(--bad)";
+    }, msg => { out.textContent = msg; out.style.color = "var(--bad)"; });
+  };
+  $("revToggle").onchange = e => { prefs.reverse = e.target.checked; savePrefs(); flipped = false; renderPractice(); };
+  $("againBtn").onclick = () => grade(w, false);
+  $("gotBtn").onclick = () => grade(w, true);
+}
+async function grade(w, ok) {
+  const box = ok ? Math.min((w.box || 0) + 1, 5) : 1;
+  const due = ok ? Date.now() + INTERVALS[box] : Date.now() + 10 * 60e3;
+  if (!ok && queue.slice(qi + 1).indexOf(w.id) < 0) queue.push(w.id);
+  qi++; flipped = false;
+  try { await putWord({ ...w, box, due }); } catch {}
+  renderPractice();
+}
+function wireEmpty() { document.querySelectorAll("[data-go]").forEach(b => b.onclick = () => showTab(b.dataset.go)); }
+document.addEventListener("keydown", e => {
+  if ($("p-practice").hidden || !flipped || e.target.tagName === "INPUT") return;
+  if (e.key === "1") $("againBtn")?.click();
+  if (e.key === "2") $("gotBtn")?.click();
+});
+
+/* ---------- word list ---------- */
+$("search").oninput = renderList;
+function renderList() {
+  const q = $("search").value.trim().toLowerCase();
+  const list = words.filter(w => !q || w.text.toLowerCase().includes(q) || (w.translation || "").toLowerCase().includes(q))
+    .sort((a, b) => (b.added || 0) - (a.added || 0));
+  if (!words.length) { $("listBox").innerHTML = `<div class="empty"><h2>Your notebook is empty</h2><p>Saved words land here.</p><button class="btn" data-go="add">Add a word</button></div>`; return wireEmpty(); }
+  if (!list.length) { $("listBox").innerHTML = `<p class="hint">No words match “${esc(q)}”.</p>`; return; }
+  $("listBox").innerHTML = `<ul class="words">${list.map(w => `<li>
+    <span class="w-main">${esc(w.text)} = <b>${esc(w.translation)}</b>${w.romanization ? ` <span class="romaji">(${esc(w.romanization)})</span>` : ""}</span>
+    <span class="w-actions">
+      <button class="icon-btn" data-speak="${w.id}" aria-label="Hear ${esc(w.translation)}">${ICON_SPEAK}</button>
+      <button class="icon-btn" data-del="${w.id}" aria-label="Delete ${esc(w.text)}">${ICON_DEL}</button>
+    </span>
+    <span class="w-meta">${esc(langName(w.from))} to ${esc(langName(w.to))}
+      <span class="dots" title="Learning level ${w.box || 0} of 5">${[1,2,3,4,5].map(i => `<i class="${(w.box || 0) >= i ? "on" : ""}"></i>`).join("")}</span></span>
+  </li>`).join("")}</ul>`;
+  $("listBox").querySelectorAll("[data-speak]").forEach(b => b.onclick = () => { const w = words.find(x => x.id === b.dataset.speak); speak(w.translation, w.to); });
+  $("listBox").querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
+    const w = words.find(x => x.id === b.dataset.del);
+    if (confirm(`Delete “${w.text}” from your notebook?`)) { try { await removeWord(w.id); } catch {} }
+  });
+}
+
+/* ---------- tabs ---------- */
+const TABS = { add: "p-add", practice: "p-practice", list: "p-list" };
+function showTab(name) {
+  for (const [k, p] of Object.entries(TABS)) { $(p).hidden = k !== name; $("tab-" + k).setAttribute("aria-selected", k === name); }
+  if (name === "practice") startSession(false);
+  if (name === "list") renderList();
+  if (name === "add") $("wordInput").focus();
+}
+for (const k of Object.keys(TABS)) $("tab-" + k).onclick = () => showTab(k);
+
+function renderAll() {
+  const d = dueWords().length;
+  $("dueCount").textContent = d ? `(${d})` : "";
+  $("wordCount").textContent = words.length ? `(${words.length})` : "";
+  if (!$("p-list").hidden) renderList();
+  if (!$("p-practice").hidden && qi >= queue.length) renderPractice();
+}
+
+renderAll();
+initStore();
+})();
+</script>
+</body>
+</html>

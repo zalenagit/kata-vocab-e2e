@@ -1,0 +1,22 @@
+{
+  "name": "kata-vocab-e2e",
+  "version": "1.0.0",
+  "description": "Kata, a voice-enabled vocabulary and flashcard app, with Playwright and Cypress end-to-end tests",
+  "private": true,
+  "scripts": {
+    "serve": "node scripts/serve.js",
+    "test:pw": "playwright test",
+    "test:pw:chromium": "playwright test --project=chromium",
+    "test:pw:ui": "playwright test --ui",
+    "report:pw": "playwright show-report",
+    "cy:open": "cypress open",
+    "cy:run": "cypress run --browser chrome",
+    "test:cy": "start-server-and-test serve http://localhost:4173 cy:run",
+    "test": "npm run test:pw && npm run test:cy"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "cypress": "^14.5.0",
+    "start-server-and-test": "^2.0.0"
+  }
+}
