@@ -1,6 +1,7 @@
 /**
  * Test doubles for everything Kata gets from the browser or the Claude runtime:
  *   - window.claude.use("sample" | "user" | "db") -> fake translator, fake profile, no db
+ *     (pass { claude: false } to test the standalone version, where window.claude doesn't exist)
  *     (so saved words go to localStorage and tests stay deterministic)
  *   - speechSynthesis   -> records what would be spoken in window.__spoken
  *   - SpeechRecognition -> replays transcripts from window.__speechQueue
@@ -11,7 +12,7 @@
  */
 function installKataMocks(win, config) {
   const cfg = Object.assign(
-    { name: "Zalina Yusop", sample: true, sampleError: null, speechRecognition: true, speech: [], seedWords: null },
+    { claude: true, name: "Zalina Yusop", sample: true, sampleError: null, speechRecognition: true, speech: [], seedWords: null },
     config || {}
   );
 
@@ -46,7 +47,10 @@ function installKataMocks(win, config) {
     }
   } catch (e) {}
 
-  // ---- Claude runtime ----
+  // Keep the service worker out of tests so every run sees fresh files.
+  win.__KATA_NO_SW = true;
+
+  // ---- Claude runtime (claude: false = the standalone/Cloudflare version) ----
   win.__sampleCalls = [];
   const sample = async (input) => ({ text: String(input), truncated: false });
   sample.json = async (prompt) => {
@@ -64,7 +68,7 @@ function installKataMocks(win, config) {
     isOwner: () => true,
     canEdit: () => true
   };
-  win.claude = {
+  if (cfg.claude) win.claude = {
     use: async (name) => {
       if (name === "sample") return cfg.sample ? sample : null;
       if (name === "user") return user;

@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Kata – my word notebook</title>
+<meta name="description" content="Say or type a word, translate it, hear it, and practice with flashcards.">
+<meta name="theme-color" content="#1D2A5C">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kata">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&display=swap" rel="stylesheet">
@@ -34,6 +41,7 @@ body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.55 "Atkin
 button,input,select{font:inherit;color:inherit}
 :focus-visible{outline:3px solid var(--mark);outline-offset:2px}
 .wrap{max-width:640px;margin:0 auto;padding:28px 18px 60px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px}
 header h1{font:800 clamp(44px,11vw,72px)/.9 "Bricolage Grotesque",system-ui,sans-serif;letter-spacing:-.03em;margin:0;color:var(--navy)}
 .greet{margin:12px 0 22px;font:700 clamp(22px,5.5vw,28px)/1.25 "Bricolage Grotesque",system-ui,sans-serif;max-width:24ch}
 .greet .name{background:linear-gradient(transparent 58%,var(--mark) 58%,var(--mark) 92%,transparent 92%);border:0;padding:0 .08em;font:inherit;color:inherit;cursor:pointer}
@@ -122,7 +130,10 @@ footer{margin-top:28px;font-size:13px;color:var(--muted)}
 <body>
 <div class="wrap">
   <header>
-    <h1>Kata</h1>
+    <div class="top">
+      <h1>Kata</h1>
+      <button class="btn ghost" id="installBtn" hidden>Install app</button>
+    </div>
     <p class="greet" id="greet" aria-live="polite">Hai! What words do you want to translate today?</p>
   </header>
 
@@ -231,7 +242,7 @@ const LS_KEY = "kata-words";
 function useLocal(note) {
   mode = "local";
   try { words = JSON.parse(localStorage.getItem(LS_KEY)) || []; } catch { words = []; }
-  $("storeNote").textContent = note || "Words are saved in this browser only.";
+  $("storeNote").textContent = note || "Words are saved on this device.";
   renderAll();
 }
 const persistLocal = () => { try { localStorage.setItem(LS_KEY, JSON.stringify(words)); } catch {} };
@@ -308,10 +319,39 @@ async function translate() {
   if (!text) return flash("Type or say a word first.", true);
   const from = $("fromLang").value, to = $("toLang").value;
   if (from === to) return flash("Pick two different languages.", true);
-  const sample = await samplePromise;
-  if (!sample) { current = { text, from, to }; return renderManual(); }
   $("translateBtn").disabled = true; flash("Translating…");
-  const prompt = `You are a bilingual dictionary for a language learner.
+  try {
+    const r = await lookup(text, from, to);
+    if (r) { current = { text, from, to, ...r }; flash(""); renderResult(); }
+    else {
+      current = { text, from, to };
+      flash(navigator.onLine === false
+        ? "You're offline. Add the translation yourself and it'll be saved."
+        : "Automatic translation isn't available right now. Add the translation yourself.");
+      renderManual();
+    }
+  } catch (e) {
+    if (e && e.code === "rate_limited") flash("Too many lookups at once. Wait a moment, then try again.", true);
+    else flash("Translation didn't come through. Try again.", true);
+  } finally { $("translateBtn").disabled = false; }
+}
+
+/* Translation sources, in order: Claude (inside claude.ai) → /api/translate (Cloudflare Pages Function) → manual entry */
+async function lookup(text, from, to) {
+  const sample = await samplePromise;
+  if (sample) {
+    try {
+      const r = await sample.json(claudePrompt(text, from, to), { modelTier: "quick" });
+      return { ...r, alternatives: Array.isArray(r.alternatives) ? r.alternatives.slice(0, 3) : [], source: "" };
+    } catch (e) {
+      if (!e || e.code !== "not_granted") throw e;
+      samplePromise = Promise.resolve(null);
+    }
+  }
+  return apiLookup(text, from, to);
+}
+function claudePrompt(text, from, to) {
+  return `You are a bilingual dictionary for a language learner.
 Translate the ${langName(from)} word or phrase below into ${langName(to)}.
 Word: """${text.slice(0, 200)}"""
 Reply with ONLY a JSON object, no markdown, with these keys:
@@ -322,15 +362,20 @@ Reply with ONLY a JSON object, no markdown, with these keys:
 "example": a short natural example sentence in ${langName(from)} using the word,
 "exampleTranslation": that example sentence in ${langName(to)},
 "alternatives": up to 3 other ${langName(to)} words with a similar meaning (array of strings).`;
+}
+async function apiLookup(text, from, to) {
   try {
-    const r = await sample.json(prompt, { modelTier: "quick" });
-    current = { text, from, to, ...r, alternatives: Array.isArray(r.alternatives) ? r.alternatives.slice(0, 3) : [] };
-    flash(""); renderResult();
-  } catch (e) {
-    if (e && e.code === "not_granted") { samplePromise = Promise.resolve(null); current = { text, from, to }; flash("Translation needs permission to use Claude. You can still add the meaning yourself."); renderManual(); }
-    else if (e && e.code === "rate_limited") flash("Too many lookups at once. Wait a moment, then try again.", true);
-    else flash("Translation didn't come through. Try again.", true);
-  } finally { $("translateBtn").disabled = false; }
+    const qs = new URLSearchParams({ q: text.slice(0, 200), from, to });
+    const res = await fetch("/api/translate?" + qs, { headers: { Accept: "application/json" } });
+    if (!res.ok) return null;
+    const d = await res.json();
+    if (!d || !d.translation) return null;
+    return {
+      translation: String(d.translation),
+      alternatives: Array.isArray(d.alternatives) ? d.alternatives.slice(0, 3).map(String) : [],
+      source: d.source ? String(d.source) : ""
+    };
+  } catch { return null; }
 }
 
 function renderResult() {
@@ -349,6 +394,7 @@ function renderResult() {
       ${c.romanization ? `<span class="romaji">${esc(c.romanization)}</span><span></span>` : ""}
     </div>
     ${c.alternatives && c.alternatives.length ? `<p class="small">Also: ${c.alternatives.map(esc).join(", ")}</p>` : ""}
+    ${c.source ? `<p class="small">Translated by ${esc(c.source)}</p>` : ""}
     <hr class="divider">
     ${c.meaning ? `<p class="meaning">${esc(c.meaning)}</p>` : ""}
     ${c.example ? `<p class="example">${esc(c.example)}<span>${esc(c.exampleTranslation)}</span></p>` : ""}
@@ -513,6 +559,22 @@ function renderAll() {
   $("wordCount").textContent = words.length ? `(${words.length})` : "";
   if (!$("p-list").hidden) renderList();
   if (!$("p-practice").hidden && qi >= queue.length) renderPractice();
+}
+
+/* ---------- installable app ---------- */
+let deferredInstall = null;
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferredInstall = e; $("installBtn").hidden = false; });
+addEventListener("appinstalled", () => { deferredInstall = null; $("installBtn").hidden = true; });
+$("installBtn").onclick = async () => {
+  if (!deferredInstall) return;
+  deferredInstall.prompt();
+  try { await deferredInstall.userChoice; } catch {}
+  deferredInstall = null; $("installBtn").hidden = true;
+};
+const topLevel = (() => { try { return window.self === window.top; } catch { return false; } })();
+if ("serviceWorker" in navigator && !window.__KATA_NO_SW && topLevel &&
+    (location.protocol === "https:" || location.hostname === "localhost")) {
+  addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
 }
 
 renderAll();
