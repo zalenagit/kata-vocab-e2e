@@ -141,6 +141,10 @@ dialog.guide::backdrop{background:rgba(10,14,30,.55)}
 .guide .copyrow{display:flex;gap:8px;margin-top:8px}
 .guide .copyrow input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--rule);border-radius:8px;background:var(--card);font-size:14px}
 .guide .actions{display:flex;justify-content:flex-end;margin-top:16px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:20;max-width:min(92vw,460px);background:var(--ink);color:var(--paper);padding:12px 16px;border-radius:12px;font-size:15px;box-shadow:var(--shadow)}
+.guide .install-now{width:100%;margin:0 0 16px;padding:14px}
+.edit-row{margin-top:14px}
+.edit-row input{display:block;width:100%;margin-top:4px;padding:10px 12px;border:1px solid var(--rule);border-radius:10px;background:var(--card);font-size:17px}
 </style>
 </head>
 <body>
@@ -195,11 +199,14 @@ dialog.guide::backdrop{background:rgba(10,14,30,.55)}
     <div class="guide-in">
       <h2 id="guideTitle">Install Kata</h2>
       <p class="sub" id="guideSub"></p>
+      <button class="btn install-now" id="installNow" hidden>Install now</button>
       <ol id="guideSteps"></ol>
       <div id="guideNote"></div>
       <div class="actions"><button class="btn" id="guideClose">Got it</button></div>
     </div>
   </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
   <footer id="storeNote">Opening your notebook…</footer>
 </div>
@@ -302,14 +309,31 @@ const newId = () => "w" + Date.now().toString(36) + Math.random().toString(36).s
 let voices = [];
 const loadVoices = () => { voices = window.speechSynthesis ? speechSynthesis.getVoices() : []; };
 if (window.speechSynthesis) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { t.hidden = true; }, 6000);
+}
 function speak(text, lang) {
-  if (!window.speechSynthesis || !text) return flash("Your browser can't read words aloud.");
-  speechSynthesis.cancel();
+  const synth = window.speechSynthesis;
+  if (!synth || !window.SpeechSynthesisUtterance || !text) return toast("This browser can't read words aloud.");
+  if (!voices.length) loadVoices();
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = lang; u.rate = .9;
+  u.lang = lang; u.rate = .9; u.volume = 1;
   const base = lang.split("-")[0];
-  u.voice = voices.find(v => v.lang === lang) || voices.find(v => v.lang.replace("_","-").startsWith(base)) || null;
-  speechSynthesis.speak(u);
+  const norm = v => (v.lang || "").replace("_", "-");
+  const voice = voices.find(v => norm(v) === lang) || voices.find(v => norm(v).toLowerCase().startsWith(base));
+  if (voice) u.voice = voice;
+  else if (voices.length) toast(`No ${langName(lang)} voice on this device, so it may sound off. You can add one in your phone's text-to-speech settings.`);
+  u.onerror = e => {
+    if (e && (e.error === "canceled" || e.error === "interrupted")) return;
+    toast("Couldn't play the sound. Check that your media volume is up and silent mode is off.");
+  };
+  // Android Chrome drops speech that starts right after cancel(), so only cancel when needed and start a beat later.
+  if (synth.speaking || synth.pending) synth.cancel();
+  try { synth.resume(); } catch {}
+  setTimeout(() => synth.speak(u), 60);
 }
 
 /* ---------- voice in ---------- */
@@ -396,9 +420,12 @@ async function apiLookup(text, from, to) {
     if (!res.ok) return null;
     const d = await res.json();
     if (!d || !d.translation) return null;
+    const field = k => (typeof d[k] === "string" ? d[k] : "");
     return {
       translation: String(d.translation),
       alternatives: Array.isArray(d.alternatives) ? d.alternatives.slice(0, 3).map(String) : [],
+      partOfSpeech: field("partOfSpeech"), meaning: field("meaning"), romanization: field("romanization"),
+      example: field("example"), exampleTranslation: field("exampleTranslation"),
       source: d.source ? String(d.source) : ""
     };
   } catch { return null; }
@@ -424,8 +451,13 @@ function renderResult() {
     <hr class="divider">
     ${c.meaning ? `<p class="meaning">${esc(c.meaning)}</p>` : ""}
     ${c.example ? `<p class="example">${esc(c.example)}<span>${esc(c.exampleTranslation)}</span></p>` : ""}
+    <div class="edit-row" id="editRow" hidden>
+      <label class="small" for="editTrans">Your ${esc(langName(c.to))} translation</label>
+      <input id="editTrans" autocomplete="off" value="${esc(c.translation)}">
+    </div>
     <div class="actions">
       <button class="btn yellow" id="saveBtn">Save word</button>
+      <button class="btn ghost" id="editBtn">Edit translation</button>
       <button class="btn ghost" id="clearBtn">Clear</button>
     </div></article>`;
   wireResult();
@@ -441,11 +473,20 @@ function renderManual() {
   wireResult();
 }
 function wireResult() {
+  if ($("editBtn")) $("editBtn").onclick = () => {
+    $("editRow").hidden = false; $("editBtn").hidden = true;
+    const i = $("editTrans"); i.focus(); i.select();
+  };
   $("resultBox").querySelectorAll("[data-say]").forEach(b => b.onclick = () =>
     b.dataset.say === "from" ? speak(current.text, current.from) : speak(current.translation, current.to));
   $("clearBtn").onclick = () => { $("resultBox").innerHTML = ""; $("wordInput").value = ""; current = null; $("wordInput").focus(); };
   $("saveBtn").onclick = async () => {
     if ($("manTrans")) { const t = $("manTrans").value.trim(); if (!t) return flash("Add a translation before saving.", true); current.translation = t; }
+    if ($("editRow") && !$("editRow").hidden) {
+      const t = $("editTrans").value.trim();
+      if (!t) return flash("Add a translation before saving.", true);
+      if (t !== current.translation) { current.translation = t; current.romanization = ""; current.exampleTranslation = ""; }
+    }
     const dup = words.find(w => w.text.toLowerCase() === current.text.toLowerCase() && w.to === current.to);
     const w = { id: dup ? dup.id : newId(), text: current.text, from: current.from, to: current.to,
       translation: current.translation || "", romanization: current.romanization || "", partOfSpeech: current.partOfSpeech || "",
@@ -656,6 +697,8 @@ function openGuide() {
   $("guideSub").textContent = g.sub;
   $("guideSteps").innerHTML = g.steps.map(x => `<li>${x}</li>`).join("");
   $("guideNote").innerHTML = g.note;
+  $("installNow").hidden = !deferredInstall;
+  if (deferredInstall) $("guideSub").textContent = "Tap Install now, or follow the steps below.";
   const copyBtn = $("guideCopy");
   if (copyBtn) copyBtn.onclick = async () => {
     const input = $("guideLink");
@@ -670,13 +713,15 @@ $("installGuide").addEventListener("click", e => { if (e.target === $("installGu
 
 addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferredInstall = e; });
 addEventListener("appinstalled", () => { deferredInstall = null; $("installBtn").hidden = true; });
-$("installBtn").onclick = async () => {
-  if (!deferredInstall) return openGuide();
-  deferredInstall.prompt();
-  let outcome = "";
-  try { outcome = (await deferredInstall.userChoice).outcome; } catch {}
+$("installBtn").onclick = () => openGuide();
+$("installNow").onclick = async () => {
+  if (!deferredInstall) return;
+  const ev = deferredInstall;
   deferredInstall = null;
-  if (outcome === "accepted") $("installBtn").hidden = true;
+  $("installNow").hidden = true;
+  let outcome = "";
+  try { ev.prompt(); outcome = (await ev.userChoice).outcome; } catch {}
+  if (outcome === "accepted") { $("guideClose").onclick(); $("installBtn").hidden = true; }
 };
 const topLevel = (() => { try { return window.self === window.top; } catch { return false; } })();
 $("installBtn").hidden = !topLevel || isInstalled();

@@ -41,6 +41,24 @@ test.describe("Standalone app (Cloudflare)", () => {
     expect(query.get("to")).toBe("ms-MY");
   });
 
+  test("shows meaning, part of speech and example from the dictionary model", async ({ page }) => {
+    await page.route("**/api/translate?*", (r) => r.fulfill({ json: {
+      translation: "menebang hutan", alternatives: ["menyahhutankan"], partOfSpeech: "verb",
+      meaning: "To clear an area of its trees.", example: "They plan to deforest the hillside.",
+      exampleTranslation: "Mereka merancang untuk menebang hutan di lereng bukit itu.", romanization: "",
+      source: "Cloudflare Workers AI"
+    } }));
+    await openStandalone(page);
+    await translate(page, "deforest");
+    const box = page.locator("#resultBox");
+    await expect(box.locator(".trans")).toHaveText("menebang hutan");
+    await expect(box).toContainText("verb");
+    await expect(box).toContainText("To clear an area of its trees.");
+    await expect(box).toContainText("Mereka merancang untuk menebang hutan di lereng bukit itu.");
+    await expect(box).toContainText("Also: menyahhutankan");
+    await expect(box).toContainText("Translated by Cloudflare Workers AI");
+  });
+
   test("saves an API translation and practices it", async ({ page }) => {
     await page.route("**/api/translate?*", (r) => r.fulfill({ json: { translation: "helo", alternatives: [], source: "MyMemory" } }));
     await openStandalone(page);
@@ -74,8 +92,8 @@ test.describe("Standalone app (Cloudflare)", () => {
     await expect(page.getByRole("button", { name: "Tell me your name" })).toBeVisible();
   });
 
-  test("install button uses the browser's install prompt when offered", async ({ page }) => {
-    await openStandalone(page);
+  test("guide offers Install now when the browser allows it", async ({ page }) => {
+    await openStandalone(page, { userAgent: UA.androidChrome });
     await expect(page.locator("#installBtn")).toBeVisible();
     await page.evaluate(() => {
       const e = new Event("beforeinstallprompt", { cancelable: true });
@@ -84,9 +102,20 @@ test.describe("Standalone app (Cloudflare)", () => {
       window.dispatchEvent(e);
     });
     await page.locator("#installBtn").click();
+    await expect(page.locator("#installGuide")).toBeVisible();
+    await expect(page.locator("#guideSub")).toHaveText("Tap Install now, or follow the steps below.");
+    await expect(page.locator("#installGuide li")).toHaveCount(3);
+    await page.locator("#installNow").click();
     expect(await page.evaluate(() => window.__prompted)).toBe(true);
-    await expect(page.locator("#installBtn")).toBeHidden();
     await expect(page.locator("#installGuide")).not.toBeVisible();
+    await expect(page.locator("#installBtn")).toBeHidden();
+  });
+
+  test("guide still shows steps when the browser offers no prompt", async ({ page }) => {
+    await openStandalone(page, { userAgent: UA.androidChrome });
+    await page.locator("#installBtn").click();
+    await expect(page.locator("#installNow")).toBeHidden();
+    await expect(page.locator("#installGuide")).toContainText("Install app");
   });
 
   test("install button is hidden once Kata is installed", async ({ page }) => {

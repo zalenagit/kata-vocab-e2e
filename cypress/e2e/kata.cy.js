@@ -79,6 +79,20 @@ describe("Translate", () => {
     ]);
   });
 
+  it("warns when the device has no voice for the language", () => {
+    visitKata({ voices: [{ lang: "en-US", name: "English" }] });
+    translate("hello");
+    cy.get('[aria-label="Hear the translation"]').click();
+    cy.get("#toast").should("contain.text", "No Malay voice on this device");
+  });
+
+  it("explains when sound can't play", () => {
+    visitKata({ speechFail: true });
+    translate("hello");
+    cy.get('[aria-label="Hear the translation"]').click();
+    cy.get("#toast").should("contain.text", "Check that your media volume is up");
+  });
+
   it("renders hostile text as plain text (no XSS)", () => {
     visitKata();
     const payload = "<img src=x onerror=window.__xss=1>";
@@ -143,6 +157,30 @@ describe("Saving words", () => {
 
     visitKata();
     cy.get("#wordCount").should("have.text", "(1)");
+  });
+});
+
+describe("Editing translations", () => {
+  it("lets you fix a translation before saving", () => {
+    visitKata();
+    translate("hello");
+    cy.get("#editRow").should("not.be.visible");
+    cy.contains("button", "Edit translation").click();
+    cy.get("#editTrans").should("have.value", "helo").clear().type("hai");
+    cy.get("#saveBtn").click();
+    cy.get("#tab-list").click();
+    cy.get("ul.words li").should("have.length", 1);
+    cy.get("ul.words li .w-main").should("contain.text", "hello = hai");
+  });
+
+  it("an emptied translation can't be saved", () => {
+    visitKata();
+    translate("hello");
+    cy.contains("button", "Edit translation").click();
+    cy.get("#editTrans").clear();
+    cy.get("#saveBtn").click();
+    cy.get("#addHint").should("have.text", "Add a translation before saving.");
+    cy.get("#wordCount").should("have.text", "");
   });
 });
 

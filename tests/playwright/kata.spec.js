@@ -81,8 +81,22 @@ test.describe("Translate", () => {
     await translate(page, "hello");
     await page.getByRole("button", { name: "Hear hello" }).click();
     await page.getByRole("button", { name: "Hear the translation" }).click();
-    const spoken = await page.evaluate(() => window.__spoken);
-    expect(spoken).toEqual([{ text: "hello", lang: "en-US" }, { text: "helo", lang: "ms-MY" }]);
+    await expect.poll(() => page.evaluate(() => window.__spoken))
+      .toEqual([{ text: "hello", lang: "en-US" }, { text: "helo", lang: "ms-MY" }]);
+  });
+
+  test("warns when the device has no voice for the language", async ({ page }) => {
+    await openKata(page, { voices: [{ lang: "en-US", name: "English" }] });
+    await translate(page, "hello");
+    await page.getByRole("button", { name: "Hear the translation" }).click();
+    await expect(page.locator("#toast")).toContainText("No Malay voice on this device");
+  });
+
+  test("explains when sound can't play", async ({ page }) => {
+    await openKata(page, { speechFail: true });
+    await translate(page, "hello");
+    await page.getByRole("button", { name: "Hear the translation" }).click();
+    await expect(page.locator("#toast")).toContainText("Check that your media volume is up");
   });
 
   test("renders hostile text as plain text (no XSS)", async ({ page }) => {
@@ -149,6 +163,31 @@ test.describe("Saving words", () => {
 
     await page.reload();
     await expect(page.locator("#wordCount")).toHaveText("(1)");
+  });
+});
+
+test.describe("Editing translations", () => {
+  test("lets you fix a translation before saving", async ({ page }) => {
+    await openKata(page);
+    await translate(page, "hello");
+    await expect(page.locator("#editRow")).toBeHidden();
+    await page.getByRole("button", { name: "Edit translation" }).click();
+    await expect(page.locator("#editTrans")).toHaveValue("helo");
+    await page.locator("#editTrans").fill("hai");
+    await page.locator("#saveBtn").click();
+    await page.locator("#tab-list").click();
+    await expect(page.locator("ul.words li")).toHaveCount(1);
+    await expect(page.locator("ul.words li .w-main")).toContainText("hello = hai");
+  });
+
+  test("an emptied translation can't be saved", async ({ page }) => {
+    await openKata(page);
+    await translate(page, "hello");
+    await page.getByRole("button", { name: "Edit translation" }).click();
+    await page.locator("#editTrans").fill("");
+    await page.locator("#saveBtn").click();
+    await expect(page.locator("#addHint")).toHaveText("Add a translation before saving.");
+    await expect(page.locator("#wordCount")).toHaveText("");
   });
 });
 

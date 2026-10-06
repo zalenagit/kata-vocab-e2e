@@ -34,6 +34,24 @@ describe("Standalone app (Cloudflare)", () => {
     cy.get("#resultBox").should("contain.text", "Also: makasih").and("contain.text", "Translated by MyMemory");
   });
 
+  it("shows meaning, part of speech and example from the dictionary model", () => {
+    cy.intercept("GET", "/api/translate?*", { body: {
+      translation: "menebang hutan", alternatives: ["menyahhutankan"], partOfSpeech: "verb",
+      meaning: "To clear an area of its trees.", example: "They plan to deforest the hillside.",
+      exampleTranslation: "Mereka merancang untuk menebang hutan di lereng bukit itu.", romanization: "",
+      source: "Cloudflare Workers AI"
+    } });
+    visitStandalone();
+    translate("deforest");
+    cy.get("#resultBox .trans").should("have.text", "menebang hutan");
+    cy.get("#resultBox")
+      .should("contain.text", "verb")
+      .and("contain.text", "To clear an area of its trees.")
+      .and("contain.text", "Mereka merancang untuk menebang hutan di lereng bukit itu.")
+      .and("contain.text", "Also: menyahhutankan")
+      .and("contain.text", "Translated by Cloudflare Workers AI");
+  });
+
   it("saves an API translation and practices it", () => {
     cy.intercept("GET", "/api/translate?*", { body: { translation: "helo", alternatives: [], source: "MyMemory" } });
     visitStandalone();
@@ -66,8 +84,8 @@ describe("Standalone app (Cloudflare)", () => {
     cy.contains("button", "Tell me your name").should("be.visible");
   });
 
-  it("install button uses the browser's install prompt when offered", () => {
-    visitStandalone();
+  it("guide offers Install now when the browser allows it", () => {
+    visitStandalone({ userAgent: UA.androidChrome });
     cy.get("#installBtn").should("be.visible");
     cy.window().then((win) => {
       const e = new win.Event("beforeinstallprompt", { cancelable: true });
@@ -76,9 +94,20 @@ describe("Standalone app (Cloudflare)", () => {
       win.dispatchEvent(e);
     });
     cy.get("#installBtn").click();
+    cy.get("#installGuide").should("be.visible");
+    cy.get("#guideSub").should("have.text", "Tap Install now, or follow the steps below.");
+    cy.get("#installGuide li").should("have.length", 3);
+    cy.get("#installNow").click();
     cy.get("@prompt").should("have.been.calledOnce");
-    cy.get("#installBtn").should("not.be.visible");
     cy.get("#installGuide").should("not.be.visible");
+    cy.get("#installBtn").should("not.be.visible");
+  });
+
+  it("guide still shows steps when the browser offers no prompt", () => {
+    visitStandalone({ userAgent: UA.androidChrome });
+    cy.get("#installBtn").click();
+    cy.get("#installNow").should("not.be.visible");
+    cy.get("#installGuide").should("contain.text", "Install app");
   });
 
   it("install button is hidden once Kata is installed", () => {
