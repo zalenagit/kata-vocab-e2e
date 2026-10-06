@@ -1,6 +1,6 @@
 // Kata service worker: makes the app open offline.
 // Bump CACHE when you change the app shell so phones pick up the new version.
-const CACHE = "kata-v1";
+const CACHE = "kata-v2";
 const SHELL = ["/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
